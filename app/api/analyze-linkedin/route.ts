@@ -19,18 +19,16 @@ async function fetchLinkedInProfile(url: string): Promise<string> {
   const html = await res.text();
 
   // Extract JSON-LD structured data (LinkedIn embeds profile data here)
-  const jsonLdMatches = html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-  const jsonLdBlocks: string[] = [];
-  for (const match of jsonLdMatches) {
-    jsonLdBlocks.push(match[1]);
-  }
+  const jsonLdBlocks: string[] = Array.from(
+    html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi),
+    (m) => m[1]
+  );
 
   // Extract og: meta tags
-  const ogTags: string[] = [];
-  const ogMatches = html.matchAll(/<meta[^>]*property="og:([^"]+)"[^>]*content="([^"]*)"[^>]*>/gi);
-  for (const match of ogMatches) {
-    ogTags.push(`${match[1]}: ${match[2]}`);
-  }
+  const ogTags: string[] = Array.from(
+    html.matchAll(/<meta[^>]*property="og:([^"]+)"[^>]*content="([^"]*)"[^>]*>/gi),
+    (m) => `${m[1]}: ${m[2]}`
+  );
 
   // Extract visible text from key sections (title, description)
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
