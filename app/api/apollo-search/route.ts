@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       first_name: p.first_name,
       last_name: p.last_name,
       title: p.title,
-      company: (p.organization as Record<string, unknown>)?.name || p.employment_history?.[0]?.organization_name || "",
+      company: (p.organization as Record<string, unknown>)?.name || (p.employment_history as Record<string, unknown>[])?.[0]?.organization_name || "",
       linkedin_url: p.linkedin_url,
       email: p.email,
       location: p.city
