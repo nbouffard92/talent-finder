@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { TargetProfile } from "@/lib/types";
-import { Search, UserPlus, ExternalLink, Linkedin, X, Zap, Clock, CheckCircle } from "lucide-react";
+import { Search, UserPlus, ExternalLink, Linkedin, X, Zap, Clock, CheckCircle, Play, Users } from "lucide-react";
 
 interface SearchJob {
   id: string;
@@ -30,6 +30,8 @@ function SourcingContent() {
   const [launching, setLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
   const [jobs, setJobs] = useState<SearchJob[]>([]);
+  const [runningJobId, setRunningJobId] = useState<string | null>(null);
+  const [jobResult, setJobResult] = useState<{ jobId: string; added: number; skipped: number } | null>(null);
 
   // Manual import
   const [showImport, setShowImport] = useState(false);
@@ -63,6 +65,21 @@ function SourcingContent() {
   async function loadJobs() {
     const { data } = await supabase.from("search_jobs").select("*").order("created_at", { ascending: false }).limit(10);
     setJobs(data || []);
+  }
+
+  async function runJob(jobId: string) {
+    setRunningJobId(jobId);
+    setJobResult(null);
+    loadJobs();
+    const res = await fetch("/api/run-search-job", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId }),
+    });
+    const data = await res.json();
+    setRunningJobId(null);
+    if (res.ok) setJobResult({ jobId, added: data.added, skipped: data.skipped });
+    loadJobs();
   }
 
   function handleProfileSelect(id: string) {
@@ -237,13 +254,28 @@ function SourcingContent() {
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
                       {job.results_count > 0 && (
+                        <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Users className="w-3 h-3" /> {job.results_count} ajoutés
+                        </span>
+                      )}
+                      {jobResult?.jobId === job.id && (
                         <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                          {job.results_count} profils
+                          +{jobResult.added} candidats
                         </span>
                       )}
                       <span className={`text-xs font-medium ${job.status === "done" ? "text-emerald-600" : job.status === "running" ? "text-blue-600" : "text-amber-600"}`}>
-                        {statusLabel(job.status)}
+                        {runningJobId === job.id ? "En cours..." : statusLabel(job.status)}
                       </span>
+                      {job.status !== "done" && (
+                        <button
+                          onClick={() => runJob(job.id)}
+                          disabled={!!runningJobId}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                        >
+                          <Play className="w-3 h-3" />
+                          {runningJobId === job.id ? "..." : "Exécuter"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
