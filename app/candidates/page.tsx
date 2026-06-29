@@ -4,7 +4,10 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Candidate, STATUS_LABELS, STATUS_COLORS, CandidateStatus } from "@/lib/types";
-import { Plus, Users, ExternalLink, X, Search, LayoutGrid, List, MoreHorizontal, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import {
+  Plus, Users, ExternalLink, X, Search, LayoutGrid, List, Table2,
+  MoreHorizontal, Archive, ArchiveRestore, Trash2, CheckSquare
+} from "lucide-react";
 
 interface TargetProfileLight { id: string; name: string; }
 
@@ -16,7 +19,7 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [view, setView] = useState<"kanban" | "list" | "table">("kanban");
 
   // Filtres
   const [search, setSearch] = useState("");
@@ -25,6 +28,10 @@ export default function CandidatesPage() {
   const [filterProfile, setFilterProfile] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Sélection multiple (vue table)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const [form, setForm] = useState({
     first_name: "", last_name: "", title: "", company: "",
@@ -40,6 +47,7 @@ export default function CandidatesPage() {
     setCandidates(data || []);
     setTargetProfiles(profs || []);
     setLoading(false);
+    setSelectedIds(new Set());
   }
 
   useEffect(() => { load(); }, []);
@@ -74,13 +82,48 @@ export default function CandidatesPage() {
     load();
   }
 
+  // ── Actions groupées ──
+  async function bulkArchive(archive: boolean) {
+    if (!selectedIds.size) return;
+    setBulkLoading(true);
+    await supabase.from("candidates").update({ archived: archive }).in("id", [...selectedIds]);
+    setBulkLoading(false);
+    load();
+  }
+
+  async function bulkDelete() {
+    if (!selectedIds.size) return;
+    if (!confirm(`Supprimer définitivement ${selectedIds.size} candidat(s) ? Cette action est irréversible.`)) return;
+    setBulkLoading(true);
+    await supabase.from("candidates").delete().in("id", [...selectedIds]);
+    setBulkLoading(false);
+    load();
+  }
+
+  // ── Sélection ──
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(ids: string[]) {
+    if (ids.every((id) => selectedIds.has(id))) {
+      setSelectedIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.delete(id)); return next; });
+    } else {
+      setSelectedIds((prev) => { const next = new Set(prev); ids.forEach((id) => next.add(id)); return next; });
+    }
+  }
+
   // Titres uniques pour le filtre
   const uniqueTitles = useMemo(() =>
     [...new Set(candidates.map((c) => c.title).filter(Boolean) as string[])].sort(),
     [candidates]
   );
 
-  // Candidats filtrés
+  // Candidats filtrés (vue table = tous, sinon filtre archivés)
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return candidates.filter((c) => {
@@ -89,15 +132,15 @@ export default function CandidatesPage() {
       const matchStatus = !filterStatus || c.status === filterStatus;
       const matchTitle = !filterTitle || c.title === filterTitle;
       const matchProfile = !filterProfile || c.target_profile_id === filterProfile;
-      const matchArchived = showArchived ? c.archived : !c.archived;
+      const matchArchived = view === "table" ? true : (showArchived ? c.archived : !c.archived);
       return matchSearch && matchStatus && matchTitle && matchProfile && matchArchived;
     });
-  }, [candidates, search, filterStatus, filterTitle, filterProfile, showArchived]);
+  }, [candidates, search, filterStatus, filterTitle, filterProfile, showArchived, view]);
 
   const byStatus = (status: CandidateStatus) => filtered.filter((c) => c.status === status);
-
   const hasFilters = search || filterStatus || filterTitle || filterProfile || showArchived;
   const archivedCount = candidates.filter((c) => c.archived).length;
+  const allTableSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
 
   return (
     <div className="p-8">
@@ -112,7 +155,7 @@ export default function CandidatesPage() {
       </div>
 
       {/* Barre de recherche et filtres */}
-      <div className="card p-4 mb-6 flex flex-wrap gap-3 items-center">
+      <div className="card p-4 mb-4 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-48">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -134,13 +177,15 @@ export default function CandidatesPage() {
           <option value="">Tous les rôles</option>
           {uniqueTitles.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <button
-          onClick={() => setShowArchived((v) => !v)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${showArchived ? "bg-amber-50 border-amber-300 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
-        >
-          <Archive className="w-3.5 h-3.5" />
-          Archivés {archivedCount > 0 && <span className="bg-amber-200 text-amber-800 rounded-full px-1.5 py-0.5">{archivedCount}</span>}
-        </button>
+        {view !== "table" && (
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${showArchived ? "bg-amber-50 border-amber-300 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Archivés {archivedCount > 0 && <span className="bg-amber-200 text-amber-800 rounded-full px-1.5 py-0.5">{archivedCount}</span>}
+          </button>
+        )}
         {hasFilters && (
           <button onClick={() => { setSearch(""); setFilterStatus(""); setFilterTitle(""); setShowArchived(false); }}
             className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
@@ -148,14 +193,51 @@ export default function CandidatesPage() {
           </button>
         )}
         <div className="flex gap-1 ml-auto">
-          <button onClick={() => setView("kanban")} className={`p-2 rounded-lg ${view === "kanban" ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:text-slate-600"}`}>
+          <button onClick={() => setView("kanban")} title="Vue Kanban" className={`p-2 rounded-lg ${view === "kanban" ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:text-slate-600"}`}>
             <LayoutGrid className="w-4 h-4" />
           </button>
-          <button onClick={() => setView("list")} className={`p-2 rounded-lg ${view === "list" ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:text-slate-600"}`}>
+          <button onClick={() => setView("list")} title="Vue liste" className={`p-2 rounded-lg ${view === "list" ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:text-slate-600"}`}>
             <List className="w-4 h-4" />
+          </button>
+          <button onClick={() => { setView("table"); setSelectedIds(new Set()); }} title="Vue tableau (sélection multiple)" className={`p-2 rounded-lg ${view === "table" ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:text-slate-600"}`}>
+            <Table2 className="w-4 h-4" />
           </button>
         </div>
       </div>
+
+      {/* Barre d'actions groupées (vue table) */}
+      {view === "table" && selectedIds.size > 0 && (
+        <div className="mb-4 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3">
+          <CheckSquare className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+          <span className="text-sm font-medium text-indigo-700">{selectedIds.size} sélectionné(s)</span>
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={() => bulkArchive(true)}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors disabled:opacity-50"
+            >
+              <Archive className="w-3.5 h-3.5" /> Archiver
+            </button>
+            <button
+              onClick={() => bulkArchive(false)}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-50"
+            >
+              <ArchiveRestore className="w-3.5 h-3.5" /> Désarchiver
+            </button>
+            <button
+              onClick={bulkDelete}
+              disabled={bulkLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Supprimer
+            </button>
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-slate-400 hover:text-slate-600 px-2">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal ajout */}
       {showForm && (
@@ -203,7 +285,7 @@ export default function CandidatesPage() {
           <p className="text-slate-400 text-sm mt-1">Modifiez les filtres</p>
         </div>
       ) : view === "kanban" ? (
-        /* Vue Kanban */
+        /* ── Vue Kanban ── */
         <div className="flex gap-4 overflow-x-auto pb-4">
           {PIPELINE.map((status) => {
             const cols = byStatus(status);
@@ -233,7 +315,6 @@ export default function CandidatesPage() {
                         <div className="text-xs text-slate-400 truncate">{c.company}</div>
                         {c.linkedin_url && <div className="mt-2 flex items-center gap-1 text-xs text-blue-500"><ExternalLink className="w-3 h-3" /> LinkedIn</div>}
                       </Link>
-                      {/* Menu options */}
                       <div className="absolute top-2 right-2">
                         <button
                           onClick={(e) => { e.preventDefault(); setOpenMenuId(openMenuId === c.id ? null : c.id); }}
@@ -243,16 +324,10 @@ export default function CandidatesPage() {
                         </button>
                         {openMenuId === c.id && (
                           <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-lg z-10 min-w-36 py-1">
-                            <button
-                              onClick={() => toggleArchive(c)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                            >
+                            <button onClick={() => toggleArchive(c)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
                               {c.archived ? <><ArchiveRestore className="w-3.5 h-3.5 text-emerald-500" /> Désarchiver</> : <><Archive className="w-3.5 h-3.5 text-amber-500" /> Archiver</>}
                             </button>
-                            <button
-                              onClick={() => deleteCandidate(c)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                            >
+                            <button onClick={() => deleteCandidate(c)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
                               <Trash2 className="w-3.5 h-3.5" /> Supprimer
                             </button>
                           </div>
@@ -268,8 +343,8 @@ export default function CandidatesPage() {
             );
           })}
         </div>
-      ) : (
-        /* Vue Liste */
+      ) : view === "list" ? (
+        /* ── Vue Liste ── */
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -290,9 +365,9 @@ export default function CandidatesPage() {
                       {c.photo_url ? (
                         <img src={c.photo_url} alt={`${c.first_name} ${c.last_name}`} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                       ) : (
-                      <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                        {c.first_name[0]}{c.last_name[0]}
-                      </div>
+                        <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                          {c.first_name[0]}{c.last_name[0]}
+                        </div>
                       )}
                       <Link href={`/candidates/${c.id}`} className="font-medium text-slate-900 hover:text-primary-700">
                         {c.first_name} {c.last_name}
@@ -315,24 +390,15 @@ export default function CandidatesPage() {
                         </a>
                       )}
                       <div className="relative">
-                        <button
-                          onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
-                          className="p-1 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-100"
-                        >
+                        <button onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)} className="p-1 rounded text-slate-300 hover:text-slate-600 hover:bg-slate-100">
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
                         {openMenuId === c.id && (
                           <div className="absolute right-0 top-6 bg-white border border-slate-200 rounded-lg shadow-lg z-10 min-w-36 py-1">
-                            <button
-                              onClick={() => toggleArchive(c)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                            >
+                            <button onClick={() => toggleArchive(c)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
                               {c.archived ? <><ArchiveRestore className="w-3.5 h-3.5 text-emerald-500" /> Désarchiver</> : <><Archive className="w-3.5 h-3.5 text-amber-500" /> Archiver</>}
                             </button>
-                            <button
-                              onClick={() => deleteCandidate(c)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                            >
+                            <button onClick={() => deleteCandidate(c)} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
                               <Trash2 className="w-3.5 h-3.5" /> Supprimer
                             </button>
                           </div>
@@ -344,6 +410,92 @@ export default function CandidatesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        /* ── Vue Tableau (sélection multiple) ── */
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allTableSelected}
+                    onChange={() => toggleSelectAll(filtered.map((c) => c.id))}
+                    className="rounded border-slate-300 text-primary-600 cursor-pointer"
+                  />
+                </th>
+                <th className="text-left px-4 py-3 font-medium">Candidat</th>
+                <th className="text-left px-4 py-3 font-medium">Rôle</th>
+                <th className="text-left px-4 py-3 font-medium">Entreprise</th>
+                <th className="text-left px-4 py-3 font-medium">Localisation</th>
+                <th className="text-left px-4 py-3 font-medium">Statut</th>
+                <th className="text-left px-4 py-3 font-medium">Archivé</th>
+                <th className="px-4 py-3 w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr
+                  key={c.id}
+                  className={`border-b border-slate-50 transition-colors ${selectedIds.has(c.id) ? "bg-indigo-50/60" : "hover:bg-slate-50"}`}
+                >
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(c.id)}
+                      onChange={() => toggleSelect(c.id)}
+                      className="rounded border-slate-300 text-primary-600 cursor-pointer"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {c.photo_url ? (
+                        <img src={c.photo_url} alt={`${c.first_name} ${c.last_name}`} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                          {c.first_name[0]}{c.last_name[0]}
+                        </div>
+                      )}
+                      <Link href={`/candidates/${c.id}`} className="font-medium text-slate-900 hover:text-primary-700">
+                        {c.first_name} {c.last_name}
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{c.title || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{c.company || "—"}</td>
+                  <td className="px-4 py-3 text-slate-400">{c.location || "—"}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[c.status]}`}>
+                      {STATUS_LABELS[c.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.archived ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">Archivé</span>
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.linkedin_url && (
+                      <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-600">
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Footer récap */}
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+            <span>{filtered.length} candidat(s) · {filtered.filter(c => c.archived).length} archivé(s)</span>
+            {selectedIds.size > 0 && (
+              <span className="text-indigo-600 font-medium">{selectedIds.size} sélectionné(s)</span>
+            )}
+          </div>
         </div>
       )}
     </div>
