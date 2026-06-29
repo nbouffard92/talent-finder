@@ -92,7 +92,7 @@ export default function CandidatesPage() {
       const matchArchived = showArchived ? c.archived : !c.archived;
       return matchSearch && matchStatus && matchTitle && matchProfile && matchArchived;
     });
-  }, [candidates, search, filterStatus, filterTitle, filterProfile]);
+  }, [candidates, search, filterStatus, filterTitle, filterProfile, showArchived]);
 
   const byStatus = (status: CandidateStatus) => filtered.filter((c) => c.status === status);
 

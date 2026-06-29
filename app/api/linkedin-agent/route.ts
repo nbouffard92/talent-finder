@@ -71,20 +71,20 @@ export async function POST() {
         body: JSON.stringify(apolloBody),
       });
 
-      const apolloRawText = await apolloRes.text();
       if (!apolloRes.ok) {
-        console.error(`[apollo] Erreur HTTP ${apolloRes.status} pour "${profile.name}":`, apolloRawText);
+        const errText = await apolloRes.text();
+        console.error(`[apollo] Erreur HTTP ${apolloRes.status} pour "${profile.name}":`, errText);
         continue;
       }
 
-      let apolloData: Record<string, unknown>;
-      try { apolloData = JSON.parse(apolloRawText); } catch { continue; }
-      const people = (apolloData.people as unknown[]) || [];
-      console.log(`[apollo] Profil "${profile.name}" → ${people.length} personnes trouvées (titres: ${titles.join(", ")})`);
+      const apolloData = await apolloRes.json();
+      const people: Record<string, unknown>[] = apolloData.people || [];
+      console.log(`[apollo] Profil "${profile.name}" → ${people.length} résultats (titres: ${titles.join(", ")})`);
 
 
       for (const person of people) {
-        const linkedinUrl = person.linkedin_url?.toLowerCase().trim();
+        const p = person as Record<string, unknown> & { organization?: { name?: string }; employment_history?: { organization_name?: string }[] };
+        const linkedinUrl = (p.linkedin_url as string | undefined)?.toLowerCase().trim();
 
         // Vérifier si déjà existant par URL LinkedIn
         if (linkedinUrl && existingLinkedInUrls.has(linkedinUrl)) {
@@ -96,8 +96,8 @@ export async function POST() {
         if (!linkedinUrl) {
           const nameExists = (existingCandidates || []).some(
             (c) =>
-              c.first_name?.toLowerCase() === person.first_name?.toLowerCase() &&
-              c.last_name?.toLowerCase() === person.last_name?.toLowerCase()
+              c.first_name?.toLowerCase() === (p.first_name as string)?.toLowerCase() &&
+              c.last_name?.toLowerCase() === (p.last_name as string)?.toLowerCase()
           );
           if (nameExists) {
             totalSkipped++;
@@ -106,20 +106,23 @@ export async function POST() {
         }
 
         // Insérer le nouveau candidat
-        const location = person.city
-          ? `${person.city}${person.state ? ", " + person.state : ""}${person.country ? ", " + person.country : ""}`
-          : person.country || "";
+        const city = p.city as string | undefined;
+        const state = p.state as string | undefined;
+        const country = p.country as string | undefined;
+        const location = city
+          ? `${city}${state ? ", " + state : ""}${country ? ", " + country : ""}`
+          : country || "";
 
         const { error: insertError } = await supabase.from("candidates").insert({
           target_profile_id: profile.id,
-          first_name: person.first_name || "",
-          last_name: person.last_name || "",
-          title: person.title || "",
-          company: person.organization?.name || person.employment_history?.[0]?.organization_name || "",
-          linkedin_url: person.linkedin_url || null,
-          email: person.email || null,
+          first_name: (p.first_name as string) || "",
+          last_name: (p.last_name as string) || "",
+          title: (p.title as string) || "",
+          company: p.organization?.name || p.employment_history?.[0]?.organization_name || "",
+          linkedin_url: (p.linkedin_url as string) || null,
+          email: (p.email as string) || null,
           location,
-          summary: person.headline || "",
+          summary: (p.headline as string) || "",
           status: "identified",
         });
 
