@@ -12,15 +12,17 @@ export async function POST() {
     return NextResponse.json({ error: "Apollo API key non configurée" }, { status: 500 });
   }
 
-  // 1. Récupérer les profils cibles actifs
-  const { data: profiles, error: profilesError } = await supabase
+  // 1. Récupérer les profils cibles (filtre actif si la colonne existe)
+  const { data: allProfiles, error: profilesError } = await supabase
     .from("target_profiles")
-    .select("*")
-    .eq("active", true);
+    .select("*");
 
   if (profilesError) {
     return NextResponse.json({ error: profilesError.message }, { status: 500 });
   }
+
+  // Si la colonne "active" existe, on filtre ; sinon on prend tout
+  const profiles = (allProfiles || []).filter((p) => p.active !== false);
 
   if (!profiles || profiles.length === 0) {
     return NextResponse.json({ added: 0, skipped: 0, message: "Aucun profil cible actif" });
