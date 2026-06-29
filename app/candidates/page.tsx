@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Candidate, STATUS_LABELS, STATUS_COLORS, CandidateStatus } from "@/lib/types";
-import { Plus, Users, ExternalLink, X, Search, LayoutGrid, List, MoreHorizontal, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Users, ExternalLink, X, Search, LayoutGrid, List, MoreHorizontal, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 
 interface TargetProfileLight { id: string; name: string; }
 
@@ -46,6 +46,13 @@ export default function CandidatesPage() {
 
   async function toggleArchive(c: Candidate) {
     await supabase.from("candidates").update({ archived: !c.archived }).eq("id", c.id);
+    setOpenMenuId(null);
+    load();
+  }
+
+  async function deleteCandidate(c: Candidate) {
+    if (!confirm(`Supprimer définitivement ${c.first_name} ${c.last_name} ? Cette action est irréversible.`)) return;
+    await supabase.from("candidates").delete().eq("id", c.id);
     setOpenMenuId(null);
     load();
   }
@@ -242,6 +249,12 @@ export default function CandidatesPage() {
                             >
                               {c.archived ? <><ArchiveRestore className="w-3.5 h-3.5 text-emerald-500" /> Désarchiver</> : <><Archive className="w-3.5 h-3.5 text-amber-500" /> Archiver</>}
                             </button>
+                            <button
+                              onClick={() => deleteCandidate(c)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                            </button>
                           </div>
                         )}
                       </div>
@@ -315,6 +328,12 @@ export default function CandidatesPage() {
                               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
                             >
                               {c.archived ? <><ArchiveRestore className="w-3.5 h-3.5 text-emerald-500" /> Désarchiver</> : <><Archive className="w-3.5 h-3.5 text-amber-500" /> Archiver</>}
+                            </button>
+                            <button
+                              onClick={() => deleteCandidate(c)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Supprimer
                             </button>
                           </div>
                         )}

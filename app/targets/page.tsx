@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { TargetProfile } from "@/lib/types";
-import { Plus, Trash2, ExternalLink, Target, X, Pencil, Linkedin, Sparkles } from "lucide-react";
+import { Plus, Trash2, ExternalLink, Target, X, Pencil, Linkedin, Sparkles, Power, Bot } from "lucide-react";
 
 const EMPTY_FORM = { name: "", title: "", linkedin_url: "", description: "", competencies_raw: "" };
 
@@ -127,6 +127,27 @@ export default function TargetsPage() {
     load();
   }
 
+  async function toggleActive(p: TargetProfile) {
+    await supabase.from("target_profiles").update({ active: !p.active }).eq("id", p.id);
+    load();
+  }
+
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentResult, setAgentResult] = useState<{ added: number; skipped: number } | null>(null);
+
+  async function runAgent() {
+    setAgentRunning(true);
+    setAgentResult(null);
+    try {
+      const res = await fetch("/api/linkedin-agent", { method: "POST" });
+      const data = await res.json();
+      setAgentResult({ added: data.added || 0, skipped: data.skipped || 0 });
+    } catch {
+      setAgentResult({ added: 0, skipped: 0 });
+    }
+    setAgentRunning(false);
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -135,6 +156,15 @@ export default function TargetsPage() {
           <p className="text-slate-500 mt-1">Les postes à renforcer dans votre équipe</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={runAgent}
+            disabled={agentRunning}
+            className="btn-secondary flex items-center gap-2"
+            title="Lancer l'agent pour chercher de nouveaux candidats sur les profils actifs"
+          >
+            <Bot className={`w-4 h-4 text-indigo-600 ${agentRunning ? "animate-spin" : ""}`} />
+            {agentRunning ? "Agent en cours..." : "Lancer l'agent"}
+          </button>
           <button onClick={openLinkedIn} className="btn-secondary flex items-center gap-2">
             <Linkedin className="w-4 h-4 text-blue-600" />
             Créer depuis LinkedIn
@@ -294,6 +324,15 @@ export default function TargetsPage() {
         </div>
       )}
 
+      {/* Résultat agent */}
+      {agentResult && (
+        <div className="mb-6 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-700 flex items-center gap-2">
+          <Bot className="w-4 h-4 flex-shrink-0" />
+          Agent terminé — <strong>{agentResult.added} nouveaux candidats</strong> ajoutés, {agentResult.skipped} déjà existants ignorés.
+          <button onClick={() => setAgentResult(null)} className="ml-auto text-indigo-400 hover:text-indigo-600"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
       {/* ── Liste des profils ── */}
       {loading ? (
         <div className="text-slate-400 text-sm">Chargement...</div>
@@ -314,13 +353,25 @@ export default function TargetsPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4">
           {profiles.map((p) => (
-            <div key={p.id} className="card p-5">
+            <div key={p.id} className={`card p-5 ${!p.active ? "opacity-60" : ""}`}>
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                      {p.active ? "Actif" : "Inactif"}
+                    </span>
+                  </div>
                   <p className="text-sm text-slate-500">{p.title}</p>
                 </div>
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <button
+                    onClick={() => toggleActive(p)}
+                    title={p.active ? "Désactiver (l'agent ignorera ce profil)" : "Activer (l'agent cherchera des candidats)"}
+                    className={`p-1.5 rounded-lg transition-colors ${p.active ? "text-emerald-500 hover:text-slate-400 hover:bg-slate-50" : "text-slate-300 hover:text-emerald-500 hover:bg-emerald-50"}`}
+                  >
+                    <Power className="w-4 h-4" />
+                  </button>
                   <button onClick={() => openEdit(p)} className="p-1.5 text-slate-300 hover:text-primary-600 transition-colors rounded-lg hover:bg-primary-50">
                     <Pencil className="w-4 h-4" />
                   </button>

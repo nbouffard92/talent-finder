@@ -25,6 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="fr">
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <title>TalentFinder</title>
+      </head>
       <body className="bg-slate-50 min-h-screen">
         <div className="flex h-screen overflow-hidden">
           {/* Sidebar */}
@@ -56,7 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               })}
             </nav>
             <div className="px-6 py-4 border-t border-slate-700">
-              <p className="text-slate-500 text-xs">Devoteam Cloud</p>
+              <p className="text-slate-500 text-xs">NexShift</p>
             </div>
           </aside>
 

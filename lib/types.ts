@@ -5,6 +5,7 @@ export interface TargetProfile {
   linkedin_url?: string;
   competencies: string[];
   description?: string;
+  active: boolean;
   created_at: string;
 }
 
