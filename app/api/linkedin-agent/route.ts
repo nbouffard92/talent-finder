@@ -71,10 +71,17 @@ export async function POST() {
         body: JSON.stringify(apolloBody),
       });
 
-      if (!apolloRes.ok) continue;
+      const apolloRawText = await apolloRes.text();
+      if (!apolloRes.ok) {
+        console.error(`[apollo] Erreur HTTP ${apolloRes.status} pour "${profile.name}":`, apolloRawText);
+        continue;
+      }
 
-      const apolloData = await apolloRes.json();
-      const people = apolloData.people || [];
+      let apolloData: Record<string, unknown>;
+      try { apolloData = JSON.parse(apolloRawText); } catch { continue; }
+      const people = (apolloData.people as unknown[]) || [];
+      console.log(`[apollo] Profil "${profile.name}" → ${people.length} personnes trouvées (titres: ${titles.join(", ")})`);
+
 
       for (const person of people) {
         const linkedinUrl = person.linkedin_url?.toLowerCase().trim();
@@ -133,6 +140,7 @@ export async function POST() {
     added: totalAdded,
     skipped: totalSkipped,
     profiles_processed: profiles.length,
+    profile_names: profiles.map((p) => p.name),
     timestamp: new Date().toISOString(),
   });
 }
